@@ -7,6 +7,7 @@ __pycache__/
 # Environment
 .env
 .env.local
+.env.example
 
 # OS
 .DS_Store
@@ -17,3 +18,4 @@ __pycache__/
 .omx/
 .venv/
 src_w_solution/
+venv/
