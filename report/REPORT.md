@@ -29,11 +29,14 @@
 ### Chunking Math (Ex 1.2)
 
 **Document 10,000 ký tự, chunk_size=500, overlap=50. Bao nhiêu chunks?**
-> *Số chunks = (10000 - 50) / (500 - 50) + 1 = 19 + 1 = 20 chunks*
-> *Đáp án: 20 chunks*
+> Công thức tính số lượng chunks:
+$$\text{Tổng số chunks} = \lceil \frac{\text{10000} - \text{50}}{\text{500} - \text{50}} \rceil = \lceil \frac{9950}{450} \rceil = \lceil 22.11 \rceil = \mathbf{23}$$
+> *Đáp án: 23 chunks*
 
 **Nếu overlap tăng lên 100, chunk count thay đổi thế nào? Tại sao muốn overlap nhiều hơn?**
-> Nếu overlap tăng lên 100, chunk count sẽ giảm xuống còn (10000 - 100) / (500 - 100) + 1 = 24 + 1 = 25 chunks
+> Nếu overlap tăng lên 100, chunk count sẽ là:
+$$\text{Tổng số chunks} = \lceil \frac{\text{10000} - \text{100}}{\text{500} - \text{100}} \rceil = \lceil \frac{9900}{400} \rceil = \lceil 24.75 \rceil = \mathbf{25}$$. 
+> Số lượng chunks tăng thêm 2 chunks.
 > Muốn overlap nhiều hơn để tăng khả năng giữ context giữa các chunks.
 
 ---
@@ -51,14 +54,14 @@
 
 | # | Tên tài liệu | Nguồn | Số ký tự | Metadata đã gán |
 |---|--------------|-------|----------|-----------------|
-| 1 |Bộ luật lao động 2019 | https://datafiles.chinhphu.vn/cpp/files/vbpq/2019/12/45.signed.pdf | 193202 | Không có |
+| 1 |Bộ luật lao động 2019 | https://datafiles.chinhphu.vn/cpp/files/vbpq/2019/12/45.signed.pdf | 193202 | {"source": "Bộ luật lao động 2019"} |
 
 ### Metadata Schema
 
 | Trường metadata | Kiểu | Ví dụ giá trị | Tại sao hữu ích cho retrieval? |
 |----------------|------|---------------|-------------------------------|
-| | | | |
-| | | | |
+| article_no | int | 20 | Để lọc theo số điều |
+| article_title | string | "Loại hợp đồng lao động" | Để lọc theo tiêu đề điều |
 
 ---
 
@@ -118,11 +121,15 @@ class LawDocumentChunker:
 | Thành viên | Strategy | Retrieval Score (/10) | Điểm mạnh | Điểm yếu |
 |-----------|----------|----------------------|-----------|----------|
 | Tôi | Custom Strategy (Regex Based Chunking) | 8.5 | Bảo toàn ngữ cảnh tốt | Khi điều luật quá dài, đoạn chunk sinh ra sẽ vượt qua giới hạn context window. Hao phí khi embedding. Sự thừa thãi khi truy xuất.  |
-| [Tên] | | | | |
-| [Tên] | | | | |
+| Lại Gia Khánh | Semantic Chunking | 8 | Giữ nguyên đơn vị nghĩa (câu/điều), cải thiện độ chính xác truy vấn và khả năng trích dẫn nguồn; giảm nhiễu khi trả lời câu hỏi chuyên sâu. | Phụ thuộc vào chất lượng embedding và ngưỡng similarity; cần tinh chỉnh threshold; tốn tài nguyên hơn và có thể tạo chunk kích thước không đồng đều. |
+| Mạc Phương Nga | FixedSizeChunker | 10 | Xử lý đơn giản, nhanh. Kiểm soát được lượng token đưa vào LLM | Phụ thuộc nhiều vào chunk_size và overlap, cần kiểm thử nhiều lần để tìm cặp thông số tối ưu. |
+| Nguyễn Phạm Trà My | AgenticChunker |10| Bảo tồn trọn vẹn bối cảnh và tính logic của văn bản bằng cách phân đoạn dựa trên ranh giới ngữ nghĩa thay vì cắt theo độ dài vật lý cố định. | Chi phí cao và tốc độ xử lý chậm do phụ thuộc hoàn toàn vào việc gọi API từ LLM cho từng đoạn văn bản.|
+| Trương Minh Sơn | Parent–Child | 7.8/10 | Trả lời câu hỏi, tìm chunks khá chính xác, Retrieval tìm đúng chunk quan trọng (Top-1 thường chứa đáp án). | Test thêm queries, có queries bị lan man không đúng trọng tâm dù tìm đúng đoạn chunk đoạn thông tin cần trả lời, có case bị lost-track information.’Top-K còn nhiều chunk không liên quan → context bị nhiễu |
+| Bùi Trần Gia Bảo| DocumentStructureChunker | 6/10| Giữ nguyên cấu trúc tài liệu (heading, section), rất phù hợp với văn bản markdown pháp lý, giúp truy xuất theo ngữ cảnh rõ ràng. | Phụ thuộc vào chất lượng định dạng markdown; nếu cấu trúc không chuẩn hoặc quá dài, chunk có thể mất cân bằng và ảnh hưởng hiệu quả retrieval. |
+
 
 **Strategy nào tốt nhất cho domain này? Tại sao?**
-> *Viết 2-3 câu:*
+> FixedSizeChunker là tốt nhất cho domain này vì nó xử lý đơn giản, nhanh mà vẫn giữ được ngữ cảnh của văn bản giúp cho agent vẫn có thể trả lời câu hỏi chính xác. Kiểm soát được lượng token đưa vào LLM. 
 
 ---
 
@@ -210,15 +217,18 @@ Chạy 6 benchmark queries của nhóm trên implementation cá nhân của bạ
 
 **Bao nhiêu queries trả về chunk relevant trong top-3?** 5 / 6
 
+### Dự đoán lỗi của query 6: 
+Bộ luật lao động có tổng cộng 220 điều nhưng mới chỉ chia được thành 214 chunks, có khả năng kết quả của query 6 rơi vào trường hợp chunk cần thiết bị mất.
+
 ---
 
 ## 7. What I Learned (5 điểm — Demo)
 
 **Điều hay nhất tôi học được từ thành viên khác trong nhóm:**
-> 
+> Strategy phức tạp hơn chưa chắc đã tốt hơn trong một số trường hợp.
 
 **Điều hay nhất tôi học được từ nhóm khác (qua demo):**
-> *Viết 2-3 câu:*
+> Học được cách sử dụng dataset có sẵn để cho ra các thông số đánh giá.
 
 **Nếu làm lại, tôi sẽ thay đổi gì trong data strategy?**
 > Kết hợp thêm recursive chunking để chia nhỏ các đoạn văn bản dài, giúp tăng khả năng truy xuất thông tin chính xác.
@@ -229,12 +239,12 @@ Chạy 6 benchmark queries của nhóm trên implementation cá nhân của bạ
 
 | Tiêu chí | Loại | Điểm tự đánh giá |
 |----------|------|-------------------|
-| Warm-up | Cá nhân | / 5 |
-| Document selection | Nhóm | / 10 |
-| Chunking strategy | Nhóm | / 15 |
-| My approach | Cá nhân | / 10 |
-| Similarity predictions | Cá nhân | / 5 |
-| Results | Cá nhân | / 10 |
-| Core implementation (tests) | Cá nhân | / 30 |
-| Demo | Nhóm | / 5 |
-| **Tổng** | | **/ 100** |
+| Warm-up | Cá nhân | 5 / 5 |
+| Document selection | Nhóm | 8 / 10 |
+| Chunking strategy | Nhóm | 12 / 15 |
+| My approach | Cá nhân | 10 / 10 |
+| Similarity predictions | Cá nhân | 5 / 5 |
+| Results | Cá nhân | 8.5 / 10 |
+| Core implementation (tests) | Cá nhân | 30 / 30 |
+| Demo | Nhóm | 5 / 5 |
+| **Tổng** | | **83.5 / 100** |
